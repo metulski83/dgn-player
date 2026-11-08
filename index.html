@@ -414,7 +414,7 @@
     const done = video.duration - video.currentTime < 30;
     positions[id] = { t, d: Math.floor(video.duration), at: now, done: done || !!(prev && prev.done) };
     savePositions();
-    if (force || now - lastPush > 30000) { lastPush = now; syncPushPositions([id], force === 'hide'); }
+    if (force || now - lastPush > 90000) { lastPush = now; syncPushPositions([id], force === 'hide'); }
   }
   let lastPush = 0;
 
@@ -430,9 +430,26 @@
     return fetch('https://api.github.com' + path, Object.assign({
       cache: 'no-store',
       headers: { 'Authorization': 'Bearer ' + sync.token, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' }
-    }, opts || {})).then(r => {
-      if (!r.ok) throw new Error(r.status === 401 ? 'Token ungültig oder abgelaufen' : r.status === 404 ? 'Gist nicht gefunden' : 'GitHub ' + r.status);
-      return r.json();
+    }, opts || {})).then(async r => {
+      if (r.ok) return r.json();
+      let msg = '';
+      try { msg = (await r.json()).message || ''; } catch (e) {}
+      const scopes = r.headers.get('x-oauth-scopes');
+      const retry = +r.headers.get('retry-after') || 0;
+      const resetAt = +r.headers.get('x-ratelimit-reset') || 0;
+      if ((r.status === 403 || r.status === 429) && (/rate limit/i.test(msg) || r.headers.get('x-ratelimit-remaining') === '0')) {
+        // Back off: no writes until GitHub allows them again (at least two minutes).
+        sync.pauseUntil = Math.max(Date.now() + Math.max(retry, 120) * 1000, resetAt * 1000);
+        throw new Error('GitHub bremst gerade (zu viele Anfragen). Neuer Versuch ab ' +
+          new Date(sync.pauseUntil).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ', bis dahin wird lokal gespeichert');
+      }
+      if (r.status === 401) throw new Error('GitHub-Token ungültig oder abgelaufen');
+      if (r.status === 403) {
+        if (scopes !== null && !/\bgist\b/.test(scopes)) throw new Error('Dem GitHub-Token fehlt die Berechtigung „gist“');
+        throw new Error('GitHub verweigert das Schreiben (403' + (msg ? ': ' + msg : '') + '). Token braucht bei Gists „Read and write“');
+      }
+      if (r.status === 404) throw new Error('Gist nicht gefunden');
+      throw new Error('GitHub ' + r.status + (msg ? ': ' + msg : ''));
     });
   }
   function syncStatus(msg, kind) { $('syncStatus').textContent = msg; $('syncStatus').className = 'hint' + (kind ? ' ' + kind : ''); }
@@ -489,6 +506,13 @@
 
   function syncPatch(files, keepalive) {
     if (!connected() || !Object.keys(files).length) return Promise.resolve(null);
+    if (sync.pauseUntil && Date.now() < sync.pauseUntil) {
+      // Remember what is pending and send it once the pause is over.
+      Object.assign(sync.pending = sync.pending || {}, files);
+      clearTimeout(sync.retryTimer);
+      sync.retryTimer = setTimeout(() => { const f = sync.pending; sync.pending = null; syncPatch(f); }, sync.pauseUntil - Date.now() + 1000);
+      return Promise.resolve(false);
+    }
     return gh('/gists/' + sync.gist, { method: 'PATCH', keepalive: !!keepalive, body: JSON.stringify({ files }) })
       .then(() => { syncedNow(); return true; })
       .catch(e => { syncStatus('Sync-Fehler: ' + e.message, 'err'); sync.lastError = e.message; return false; });
