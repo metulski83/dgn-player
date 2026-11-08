@@ -432,6 +432,7 @@
       headers: { 'Authorization': 'Bearer ' + sync.token, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' }
     }, opts || {})).then(async r => {
       if (r.ok) return r.json();
+      const fail = (m, extra) => Object.assign(new Error(m), { status: r.status }, extra || {});
       let msg = '';
       try { msg = (await r.json()).message || ''; } catch (e) {}
       const scopes = r.headers.get('x-oauth-scopes');
@@ -440,16 +441,17 @@
       if ((r.status === 403 || r.status === 429) && (/rate limit/i.test(msg) || r.headers.get('x-ratelimit-remaining') === '0')) {
         // Back off: no writes until GitHub allows them again (at least two minutes).
         sync.pauseUntil = Math.max(Date.now() + Math.max(retry, 120) * 1000, resetAt * 1000);
-        throw new Error('GitHub bremst gerade (zu viele Anfragen). Neuer Versuch ab ' +
-          new Date(sync.pauseUntil).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ', bis dahin wird lokal gespeichert');
+        throw fail('GitHub bremst gerade (zu viele Anfragen). Neuer Versuch ab ' +
+          new Date(sync.pauseUntil).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ', bis dahin wird lokal gespeichert', { rate: true });
       }
-      if (r.status === 401) throw new Error('GitHub-Token ungültig oder abgelaufen');
+      if (r.status === 401) throw fail('GitHub-Token ungültig oder abgelaufen');
       if (r.status === 403) {
-        if (scopes !== null && !/\bgist\b/.test(scopes)) throw new Error('Dem GitHub-Token fehlt die Berechtigung „gist“');
-        throw new Error('GitHub verweigert das Schreiben (403' + (msg ? ': ' + msg : '') + '). Token braucht bei Gists „Read and write“');
+        if (scopes !== null && !/\bgist\b/.test(scopes)) throw fail('Dem GitHub-Token fehlt die Berechtigung „gist“');
+        throw fail('GitHub verweigert das Schreiben (403' + (msg ? ': ' + msg : '') + '). Token braucht bei Gists „Read and write“');
       }
-      if (r.status === 404) throw new Error('Gist nicht gefunden');
-      throw new Error('GitHub ' + r.status + (msg ? ': ' + msg : ''));
+      if (r.status === 404) throw fail('Gist nicht gefunden');
+      if (r.status === 409) throw fail('Gleichzeitige Änderung (409)');
+      throw fail('GitHub ' + r.status + (msg ? ': ' + msg : ''));
     });
   }
   function syncStatus(msg, kind) { $('syncStatus').textContent = msg; $('syncStatus').className = 'hint' + (kind ? ' ' + kind : ''); }
@@ -504,22 +506,61 @@
     return sync.busy;
   }
 
+  // --- Serialized writes ---------------------------------------------------
+  // A gist is a git repo: parallel PATCHes conflict (409). All writes go through one queue; changes that pile up
+  // while a write is running are merged into the next one. File values may be functions, evaluated at send
+  // time, so a retry always sends the freshest (and, for notes, freshly merged) content.
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const queue = { files: {}, waiters: [], keepalive: false, running: false };
   function syncPatch(files, keepalive) {
     if (!connected() || !Object.keys(files).length) return Promise.resolve(null);
-    if (sync.pauseUntil && Date.now() < sync.pauseUntil) {
-      // Remember what is pending and send it once the pause is over.
-      Object.assign(sync.pending = sync.pending || {}, files);
-      clearTimeout(sync.retryTimer);
-      sync.retryTimer = setTimeout(() => { const f = sync.pending; sync.pending = null; syncPatch(f); }, sync.pauseUntil - Date.now() + 1000);
-      return Promise.resolve(false);
-    }
-    return gh('/gists/' + sync.gist, { method: 'PATCH', keepalive: !!keepalive, body: JSON.stringify({ files }) })
-      .then(() => { syncedNow(); return true; })
-      .catch(e => { syncStatus('Sync-Fehler: ' + e.message, 'err'); sync.lastError = e.message; return false; });
+    Object.assign(queue.files, files);
+    if (keepalive) queue.keepalive = true;
+    const done = new Promise(res => queue.waiters.push(res));
+    if (!queue.running) flushQueue();
+    return done;
+  }
+  async function flushQueue() {
+    queue.running = true;
+    try {
+      while (Object.keys(queue.files).length && connected()) {
+        if (sync.pauseUntil && Date.now() < sync.pauseUntil) { await wait(sync.pauseUntil - Date.now() + 1000); continue; }
+        const batch = queue.files, waiters = queue.waiters, keep = queue.keepalive;
+        queue.files = {}; queue.waiters = []; queue.keepalive = false;
+        const names = Object.keys(batch);
+        let ok = false, err = null;
+        for (let attempt = 0; attempt < 6 && !ok; attempt++) {
+          // Merge notes other devices wrote meanwhile before (re)sending note files.
+          if (names.some(n => n.startsWith('notes_'))) await syncPull();
+          const files = {};
+          names.forEach(n => { const v = batch[n]; files[n] = { content: typeof v === 'function' ? v() : v.content }; });
+          const body = JSON.stringify({ files });
+          try {
+            await gh('/gists/' + sync.gist, { method: 'PATCH', keepalive: keep && body.length < 60000, body });
+            ok = true;
+          } catch (e) {
+            err = e;
+            if (e.status === 409 || e.status >= 500 || !e.status) { await wait(700 * (attempt + 1) + Math.random() * 600); continue; }
+            break;
+          }
+        }
+        if (ok) syncedNow();
+        else {
+          sync.lastError = err.message;
+          syncStatus('Sync-Fehler: ' + err.message, 'err');
+          // Rate limit or repeated conflicts: keep the changes queued (newer edits win) and try again later.
+          if (err.rate || err.status === 409 || err.status >= 500) {
+            queue.files = Object.assign({}, batch, queue.files);
+            if (!err.rate) sync.pauseUntil = Date.now() + 30000;
+          }
+        }
+        waiters.forEach(w => w(ok));
+      }
+    } finally { queue.running = false; }
   }
   function syncPushPositions(ids, keepalive) {
     const files = {};
-    ids.forEach(id => { if (positions[id]) files['pos_' + id + '.json'] = { content: JSON.stringify(positions[id]) }; });
+    ids.forEach(id => { if (positions[id]) files['pos_' + id + '.json'] = () => JSON.stringify(positions[id]); });
     return syncPatch(files, keepalive);
   }
   function syncPushProgram() {
@@ -585,15 +626,14 @@
     clearTimeout(notesTimers[id]);
     // Read-merge-write: fetch what other devices added to this session first, then upload the union.
     notesTimers[id] = setTimeout(async () => {
-      await syncPull();
-      const ok = await syncPatch({ ['notes_' + id + '.json']: { content: JSON.stringify({ items: notes[id] || [] }) } });
+      const ok = await syncPatch({ ['notes_' + id + '.json']: () => JSON.stringify({ items: notes[id] || [] }) });
       const hint = $('noteHint');
       if (ok === true) { hint.className = 'hint ok'; hint.textContent = 'Notizen synchronisiert.'; }
       else if (ok === false) { hint.className = 'hint err'; hint.textContent = 'Notiz nur auf diesem Gerät gespeichert. Sync-Fehler: ' + sync.lastError; }
       else { hint.className = 'hint'; hint.textContent = 'Notiz gespeichert. Für andere Geräte den Geräte-Sync verbinden.'; }
     }, 800);
   }
-  const notesFiles = () => Object.fromEntries(Object.keys(notes).map(id => ['notes_' + id + '.json', { content: JSON.stringify({ items: notes[id] }) }]));
+  const notesFiles = () => Object.fromEntries(Object.keys(notes).map(id => ['notes_' + id + '.json', () => JSON.stringify({ items: notes[id] })]));
 
   async function syncConnect() {
     sync.token = $('ghToken').value.trim();
@@ -1162,7 +1202,14 @@
   window.addEventListener('pagehide', () => rememberPosition('hide'));
   $('syncConnect').addEventListener('click', syncConnect);
   $('ghToken').addEventListener('keydown', e => { if (e.key === 'Enter') syncConnect(); });
-  $('syncNow').addEventListener('click', async () => { syncStatus('Synchronisiere …'); await syncPull(); await syncPushPositions(Object.keys(positions)); });
+  $('syncNow').addEventListener('click', async () => {
+    syncStatus('Synchronisiere …');
+    await syncPull();
+    // One combined write: positions, notes and watchlist that may only exist on this device.
+    const files = Object.assign({}, notesFiles(), watchFile());
+    Object.keys(positions).forEach(id => { files['pos_' + id + '.json'] = () => JSON.stringify(positions[id]); });
+    await syncPatch(files);
+  });
   $('syncOff').addEventListener('click', () => {
     if (!confirm('Sync auf diesem Gerät trennen? Die Daten im Gist bleiben erhalten.')) return;
     sync.token = ''; sync.gist = ''; store('dgn_gh_token', ''); store('dgn_gist_id', '');
