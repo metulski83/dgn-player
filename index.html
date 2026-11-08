@@ -2,11 +2,16 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <!-- Send no Referer (like a local file), so the video host sees the same requests as on the Mac. -->
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="DGN-Player">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#eef1f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141a20" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" href="data:image/png;base64,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">
 <title>DGN-Player</title>
 <style>
   :root {
@@ -45,6 +50,8 @@
   main { max-width: 960px; margin: 0 auto; padding: 32px 20px 48px; }
   h1 { font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; margin: 0 0 4px; }
   .sub { color: var(--muted); margin: 0 0 24px; font-size: 0.95rem; }
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  #setupToggle { display: none; padding: 6px 12px; font-size: 0.85rem; }
 
   .inputs {
     display: grid;
@@ -114,7 +121,8 @@
   .cont .m { display: block; color: var(--muted); font-size: 0.8rem; margin-top: 4px; font-variant-numeric: tabular-nums; }
   .cont .bar { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--accent); }
   .item:last-child { border-bottom: 0; }
-  .item:hover, .item.active { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .item.active { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  @media (hover: hover) { .item:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); } }
   .item .t { flex: 1; }
   .item { position: relative; }
   .item .bar { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--accent); opacity: 0.7; }
@@ -125,7 +133,7 @@
   .import p { margin: 0 0 8px; color: var(--muted); }
   .import pre { white-space: pre-wrap; word-break: break-all; font-size: 0.75rem; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
   textarea { width: 100%; font: 0.8rem ui-monospace, Menlo, monospace; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
-  #nowTitle { font-size: 1.1rem; font-weight: 600; margin: 0 0 10px; }
+  #nowTitle { font-size: 1.1rem; font-weight: 600; margin: 0 0 10px; scroll-margin-top: max(12px, env(safe-area-inset-top)); }
   #nowTitle:empty { display: none; }
   .player { margin-top: 28px; }
   video {
@@ -151,23 +159,75 @@
     font-size: 0.8rem;
   }
   kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: 0.8rem; }
+
+  /* ---------- Touch & iOS ---------- */
+  html { -webkit-text-size-adjust: 100%; }
+  body { -webkit-tap-highlight-color: transparent; }
+  button, select, input, textarea, .cont { touch-action: manipulation; }
+  main {
+    padding-left: max(20px, env(safe-area-inset-left));
+    padding-right: max(20px, env(safe-area-inset-right));
+    padding-bottom: max(48px, env(safe-area-inset-bottom));
+  }
+  input[type="search"] { -webkit-appearance: none; appearance: none; }
+  .item .t, .cont .t, #nowTitle { overflow-wrap: anywhere; hyphens: auto; }
+  .cont-list { scroll-snap-type: x mandatory; scroll-padding-left: 2px; }
+  .cont { scroll-snap-align: start; }
+  button:active { transform: scale(0.98); }
+
+  @media (max-width: 640px) {
+    main { padding-top: max(16px, env(safe-area-inset-top)); padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); }
+    h1 { font-size: 1.3rem; }
+    .sub { margin-bottom: 16px; }
+    /* iOS zooms into fields under 16px: keep every field at 16px. */
+    input, select, textarea { font-size: 16px; }
+    textarea { font-size: 16px !important; }
+    #load { width: 100%; }
+    body.has-token #setupToggle { display: inline-block; min-height: 40px; }
+    body.has-token:not(.show-setup) .inputs, body.has-token:not(.show-setup) .sub { display: none; }
+    body.has-token:not(.show-setup) .head { margin-bottom: 12px; }
+    .inputs .hint:empty { display: none; }
+
+    .prog-head { flex-wrap: wrap; align-items: center; }
+    .prog-head label { flex: 1 0 100%; order: 2; margin-top: 4px; }
+    .prog-actions { flex-wrap: wrap; width: 100%; }
+    .prog-head button { flex: 1 1 auto; padding: 10px 12px; font-size: 0.9rem; min-height: 44px; }
+
+    .results { max-height: 55vh; -webkit-overflow-scrolling: touch; }
+    .item .main { padding: 12px; min-height: 52px; flex-wrap: wrap; row-gap: 2px; }
+    .item .m { white-space: normal; flex-basis: 100%; }
+    .item .star { min-width: 48px; }
+
+    .player { margin-top: 20px; }
+    /* Video edge to edge on phones */
+    video { border-radius: 0; margin-left: calc(-1 * max(14px, env(safe-area-inset-left))); width: calc(100% + 2 * max(14px, env(safe-area-inset-left))); max-width: 100vw; }
+    .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+    .controls button, .controls select { min-height: 44px; width: 100%; }
+    .controls .status { grid-column: 1 / -1; margin-left: 0; order: -1; }
+    #speed { font-size: 1.05rem; }
+    .cont { flex-basis: 78%; }
+    .sync input { margin-top: 4px; }
+  }
 </style>
 </head>
 <body>
 <main>
-  <h1>DGN-Player</h1>
+  <div class="head">
+    <h1>DGN-Player</h1>
+    <button id="setupToggle" type="button">Token &amp; ID</button>
+  </div>
   <p class="sub">Webcast-Token und Session-ID eingeben, abspielen oder herunterladen.</p>
 
   <div class="inputs">
     <div>
       <label for="token">Token</label>
-      <input id="token" autocomplete="off" spellcheck="false"
+      <input id="token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
              placeholder="Token, Video-URL oder kompletten curl-Befehl einfügen">
       <div class="hint" id="tokenHint"></div>
     </div>
     <div>
       <label for="sid">Session-ID</label>
-      <input id="sid" inputmode="numeric" placeholder="111545">
+      <input id="sid" inputmode="numeric" pattern="[0-9]*" enterkeyhint="go" placeholder="111545">
       <div class="hint"></div>
     </div>
     <div>
@@ -179,7 +239,7 @@
   <details id="syncBox" class="sync">
     <summary>Geräte-Sync über GitHub <span id="syncBadge"></span></summary>
     <p>Abspielpositionen und Programmliste werden in einem geheimen Gist in deinem GitHub-Konto abgeglichen. Auf jedem Gerät einmal denselben GitHub-Token eingeben.</p>
-    <input id="ghToken" autocomplete="off" spellcheck="false" placeholder="GitHub-Token (ghp_…)">
+    <input id="ghToken" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="GitHub-Token (ghp_…)">
     <div class="controls">
       <button class="primary" id="syncConnect" type="button">Verbinden</button>
       <button id="syncNow" type="button" hidden>Jetzt synchronisieren</button>
@@ -199,18 +259,18 @@
         <button id="toggleImport" type="button">Programm importieren</button>
       </span>
     </div>
-    <input id="search" placeholder="Titel oder ID eintippen" autocomplete="off">
+    <input id="search" type="search" enterkeyhint="search" autocapitalize="off" autocorrect="off" placeholder="Titel, Saal oder ID eintippen" autocomplete="off">
     <div class="hint" id="progHint"></div>
     <div id="results" class="results"></div>
 
     <div id="importBox" class="import" hidden>
       <label for="rooms">Nur diese Säle (durch Komma getrennt, leer = alle)</label>
-      <input id="rooms" spellcheck="false" style="margin-bottom:12px">
+      <input id="rooms" autocapitalize="off" autocorrect="off" spellcheck="false" style="margin-bottom:12px">
       <p>Programmseite eines Tages in Safari öffnen, Konsole mit <kbd>⌥⌘C</kbd> aufrufen, diesen Befehl einfügen und Enter drücken. Die Liste landet in der Zwischenablage.</p>
       <pre id="snippet"></pre>
       <button id="copySnippet" type="button">Befehl kopieren</button>
       <label for="importText" style="margin-top:12px">Ergebnis hier einfügen (oder eine JSON-Antwort aus dem Netzwerk-Tab)</label>
-      <textarea id="importText" rows="4" spellcheck="false"></textarea>
+      <textarea id="importText" rows="4" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
       <div class="controls">
         <button class="primary" id="doImport" type="button">Hinzufügen</button>
       </div>
@@ -285,6 +345,7 @@
   }
 
   function checkToken() {
+    document.body.classList.remove('has-token');
     const t = tokenIn.value.trim();
     tokenHint.className = 'hint';
     if (!t) { tokenHint.textContent = ''; return; }
@@ -295,7 +356,7 @@
         const exp = new Date(payload.exp * 1000);
         const fmt = exp.toLocaleString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
         if (exp < new Date()) { tokenHint.textContent = 'Abgelaufen seit ' + fmt + '. Neuen Token aus Safari kopieren.'; tokenHint.classList.add('err'); }
-        else { tokenHint.textContent = 'Gültig bis ' + fmt; tokenHint.classList.add('ok'); }
+        else { tokenHint.textContent = 'Gültig bis ' + fmt; tokenHint.classList.add('ok'); document.body.classList.add('has-token'); }
       } else { tokenHint.textContent = ''; }
     } catch (e) {
       tokenHint.textContent = 'Das sieht nicht wie ein gültiger Token aus.';
@@ -597,6 +658,10 @@
     $('curlPreview').textContent = curlCmd();
     const s = byId(sid);
     $('nowTitle').textContent = s ? s.title : '';
+    if (window.matchMedia('(max-width: 640px)').matches) {
+      document.body.classList.remove('show-setup');
+      setTimeout(() => $('nowTitle').scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    }
     document.title = s ? s.title : 'DGN ' + sid;
     renderResults();
     setStatus('Lädt …');
@@ -795,7 +860,7 @@
     const q = $('search').value.trim().toLowerCase();
     const hint = $('progHint');
     $('clearProg').hidden = !sessions.length;
-    $('exportProg').hidden = !sessions.length;
+    $('exportProg').hidden = !sessions.length || connected();
     if (!sessions.length) {
       box.innerHTML = '';
       hint.className = 'hint';
@@ -823,7 +888,7 @@
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'main';
     const t = document.createElement('span'); t.className = 't'; t.textContent = s.title;
-    const m = document.createElement('span'); m.className = 'm'; m.textContent = [s.room, fmtStart(s.start), s.code || s.id].filter(Boolean).join('  ');
+    const m = document.createElement('span'); m.className = 'm'; m.textContent = [s.room, fmtStart(s.start), s.code || s.id].filter(Boolean).join(' · ');
     b.append(t, m);
     const pr = positions[s.id];
     if (pr && pr.d) {
@@ -832,7 +897,7 @@
       else if (f > 0.01) {
         const bar = document.createElement('span'); bar.className = 'bar'; bar.style.width = (f * 100).toFixed(1) + '%';
         row.appendChild(bar);
-        m.textContent += '  ' + Math.round(f * 100) + ' %';
+        m.textContent += ' · ' + Math.round(f * 100) + ' %';
       }
     }
     b.addEventListener('click', () => { sidIn.value = s.id; start(); });
@@ -1014,6 +1079,7 @@
     $('restart').hidden = true;
   });
   $('load').addEventListener('click', start);
+  $('setupToggle').addEventListener('click', () => document.body.classList.toggle('show-setup'));
   speedBtn.addEventListener('click', () => setSpeed(speedIdx + 1));
   dlBtn.addEventListener('click', download);
   curlBtn.addEventListener('click', () => copyCurl());
