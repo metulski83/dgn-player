@@ -97,6 +97,17 @@
   .sync summary { cursor: pointer; }
   #syncBadge { color: var(--ok); font-size: 0.8rem; margin-left: 6px; }
   .program { margin-top: 24px; }
+  .notes { margin-top: 18px; }
+  .note-add { display: flex; gap: 8px; }
+  .note-add input { flex: 1; }
+  .note-list { list-style: none; margin: 8px 0 12px; padding: 0; border-radius: 8px; }
+  .note-list:not(:empty) { border: 1px solid var(--line); background: var(--surface); }
+  .note-list li { display: flex; align-items: flex-start; gap: 4px; border-bottom: 1px solid var(--line); }
+  .note-list li:last-child { border-bottom: 0; }
+  .note-list li.current { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .note-list .nt { border: 0; background: transparent; color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; padding: 10px 8px 10px 12px; }
+  .note-list .nx { flex: 1; border: 0; background: transparent; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 4px; color: inherit; }
+  .note-list .nd { border: 0; background: transparent; color: var(--muted); padding: 10px 14px; }
   .prog-head { display: flex; justify-content: space-between; align-items: end; gap: 12px; margin-bottom: 4px; }
   .prog-head label { margin: 0; }
   .prog-head button { padding: 6px 12px; font-size: 0.85rem; }
@@ -207,6 +218,8 @@
     #speed { font-size: 1.05rem; }
     .cont { flex-basis: 78%; }
     .sync input { margin-top: 4px; }
+    .note-add button { min-height: 44px; }
+    #noteExport { width: 100%; min-height: 44px; }
   }
 </style>
 </head>
@@ -302,11 +315,21 @@
       <span class="status" id="status"></span>
     </div>
     <progress id="progress" max="100" value="0"></progress>
+
+    <section id="notes" class="notes" hidden>
+      <div class="note-add">
+        <input id="noteText" autocomplete="off" enterkeyhint="done" placeholder="Notiz an dieser Stelle …">
+        <button class="primary" id="noteAdd" type="button">Notiz</button>
+      </div>
+      <div class="hint" id="noteHint"></div>
+      <ol id="noteList" class="note-list"></ol>
+      <button id="noteExport" type="button">Alle Notizen exportieren</button>
+    </section>
   </section>
 
   <details id="hints">
     <summary>Tastenkürzel und Hinweise</summary>
-    <p><kbd>Leertaste</kbd> Pause, <kbd>←</kbd>/<kbd>→</kbd> 10 Sekunden, <kbd>&lt;</kbd>/<kbd>&gt;</kbd> langsamer/schneller.</p>
+    <p><kbd>Leertaste</kbd> Pause, <kbd>←</kbd>/<kbd>→</kbd> 10 Sekunden, <kbd>&lt;</kbd>/<kbd>&gt;</kbd> langsamer/schneller, <kbd>N</kbd> Notiz schreiben.</p>
     <p>Lässt der Server den Download im Browser nicht zu, kopiert „Herunterladen“ stattdessen den curl-Befehl. Im Terminal einfügen und Enter drücken.</p>
     <pre id="curlPreview">Noch kein Video geladen.</pre>
   </details>
@@ -434,6 +457,11 @@
           if (f.truncated && f.raw_url) content = await fetch(f.raw_url, { cache: 'no-store' }).then(r => r.text());
           let data;
           try { data = JSON.parse(content); } catch (e) { continue; }
+          const nm = name.match(/^notes_(\d+)\.json$/);
+          if (nm) {
+            if (data && mergeNotes(nm[1], data.items)) { saveNotes(); posChanged = true; }
+            continue;
+          }
           const pm = name.match(/^pos_(\d+)\.json$/);
           if (pm) {
             const loc = positions[pm[1]];
@@ -450,7 +478,7 @@
         }
         if (posChanged) savePositions();
         if (progChanged) store('dgn_sessions', JSON.stringify(sessions));
-        if (posChanged || progChanged) renderResults();
+        if (posChanged || progChanged) { renderResults(); renderNotes(); }
         syncedNow();
         return posChanged || progChanged;
       } catch (e) { syncStatus('Sync-Fehler: ' + e.message, 'err'); return false; }
@@ -507,6 +535,37 @@
     return watchlist.slice(i + 1).find(open) || watchlist.find(open) || null;
   }
 
+  // --- Notes per session: { id: [ { u, t, text, at, del } ] }, synced as notes_<id>.json ---
+  // Merged item by item (newest edit wins, deletions kept as tombstones), so two devices can add notes to
+  // the same session without losing each other's entries.
+  let notes = {};
+  try { notes = JSON.parse(load('dgn_notes') || '{}') || {}; } catch (e) { notes = {}; }
+  const saveNotes = () => store('dgn_notes', JSON.stringify(notes));
+  const liveNotes = id => (notes[id] || []).filter(n => !n.del).sort((a, b) => a.t - b.t);
+  const noteCount = id => liveNotes(id).length;
+  function mergeNotes(id, items) {
+    if (!Array.isArray(items)) return false;
+    const map = new Map((notes[id] || []).map(n => [n.u, n]));
+    let changed = false;
+    items.forEach(n => {
+      if (!n || !n.u) return;
+      const loc = map.get(n.u);
+      if (!loc || (n.at || 0) > (loc.at || 0)) { map.set(n.u, n); changed = true; }
+    });
+    if (changed) notes[id] = [...map.values()];
+    return changed;
+  }
+  const notesTimers = {};
+  function pushNotes(id) {
+    clearTimeout(notesTimers[id]);
+    // Read-merge-write: fetch what other devices added to this session first, then upload the union.
+    notesTimers[id] = setTimeout(async () => {
+      await syncPull();
+      syncPatch({ ['notes_' + id + '.json']: { content: JSON.stringify({ items: notes[id] || [] }) } });
+    }, 800);
+  }
+  const notesFiles = () => Object.fromEntries(Object.keys(notes).map(id => ['notes_' + id + '.json', { content: JSON.stringify({ items: notes[id] }) }]));
+
   async function syncConnect() {
     sync.token = $('ghToken').value.trim();
     if (!sync.token) { syncStatus('Bitte einen GitHub-Token einfügen.', 'err'); return; }
@@ -530,6 +589,7 @@
       await syncPushPositions(Object.keys(positions));
       await syncPushProgram();
       await syncPatch(watchFile());
+      await syncPatch(notesFiles());
     } catch (e) {
       sync.token = ''; sync.gist = '';
       syncStatus('Verbindung fehlgeschlagen: ' + e.message + '. Hat der Token die Berechtigung „gist“?', 'err');
@@ -651,6 +711,9 @@
     syncPull();
     $('restart').hidden = true;
     loadedId = sid;
+    noteTime = null;
+    $('notes').hidden = false;
+    renderNotes();
     video.src = videoUrl();
     video.playbackRate = SPEEDS[speedIdx];
     video.play().catch(() => {});
@@ -658,7 +721,7 @@
     $('curlPreview').textContent = curlCmd();
     const s = byId(sid);
     $('nowTitle').textContent = s ? s.title : '';
-    if (window.matchMedia('(max-width: 640px)').matches) {
+    if (window.matchMedia && window.matchMedia('(max-width: 640px)').matches) {
       document.body.classList.remove('show-setup');
       setTimeout(() => $('nowTitle').scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
     }
@@ -900,6 +963,8 @@
         m.textContent += ' · ' + Math.round(f * 100) + ' %';
       }
     }
+    const nc = noteCount(s.id);
+    if (nc) m.textContent += ' · ✎ ' + nc;
     b.addEventListener('click', () => { sidIn.value = s.id; start(); });
     const on = watchlist.includes(s.id);
     const st = document.createElement('button');
@@ -1007,7 +1072,11 @@
     setStatus(isFinite(m) ? 'Länge ' + m + ' Min.' : '', 'ok');
     Promise.resolve(sync.busy).then(() => {
       const p = positions[loadedId];
-      if (p && p.t > 10 && video.duration - p.t > 30) {
+      if (pendingSeek !== null) {
+        video.currentTime = pendingSeek;
+        setStatus('Gesprungen zu ' + fmtTime(pendingSeek), 'ok');
+        pendingSeek = null;
+      } else if (p && p.t > 10 && video.duration - p.t > 30) {
         video.currentTime = p.t;
         setStatus('Fortgesetzt bei ' + fmtTime(p.t) + ' von ' + fmtTime(video.duration), 'ok');
         $('restart').hidden = false;
@@ -1078,6 +1147,106 @@
     video.currentTime = 0; video.play().catch(() => {});
     $('restart').hidden = true;
   });
+  // ---------- Notes UI ----------
+  let noteTime = null, pendingSeek = null;
+  function renderNotes() {
+    const list = $('noteList');
+    list.innerHTML = '';
+    const id = loadedId;
+    if (!id) return;
+    liveNotes(id).forEach(n => {
+      const li = document.createElement('li');
+      li.dataset.t = n.t;
+      const t = document.createElement('button'); t.type = 'button'; t.className = 'nt'; t.textContent = fmtTime(n.t);
+      t.title = 'Zu dieser Stelle springen';
+      t.addEventListener('click', () => { video.currentTime = n.t; video.play().catch(() => {}); });
+      const x = document.createElement('button'); x.type = 'button'; x.className = 'nx'; x.textContent = n.text;
+      x.title = 'Bearbeiten';
+      x.addEventListener('click', () => {
+        const v = prompt('Notiz bearbeiten (leer = löschen)', n.text);
+        if (v === null) return;
+        editNote(id, n.u, v.trim());
+      });
+      const d = document.createElement('button'); d.type = 'button'; d.className = 'nd'; d.textContent = '×';
+      d.title = 'Löschen'; d.setAttribute('aria-label', 'Notiz löschen');
+      d.addEventListener('click', () => { if (confirm('Notiz bei ' + fmtTime(n.t) + ' löschen?')) editNote(id, n.u, ''); });
+      li.append(t, x, d);
+      list.appendChild(li);
+    });
+    markCurrentNote();
+  }
+  function markCurrentNote() {
+    let cur = null;
+    $('noteList').querySelectorAll('li').forEach(li => { li.classList.remove('current'); if (+li.dataset.t <= video.currentTime + 0.5) cur = li; });
+    if (cur) cur.classList.add('current');
+  }
+  function editNote(id, u, text) {
+    const n = (notes[id] || []).find(x => x.u === u);
+    if (!n) return;
+    Object.assign(n, text ? { text } : { del: true, text: '' }, { at: Date.now() });
+    saveNotes(); renderNotes(); renderResults(); pushNotes(id);
+  }
+  function addNote() {
+    const text = $('noteText').value.trim();
+    const id = loadedId;
+    if (!text || !id) { $('noteText').focus(); return; }
+    const t = Math.floor(noteTime !== null ? noteTime : video.currentTime);
+    (notes[id] = notes[id] || []).push({ u: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t, text, at: Date.now() });
+    saveNotes();
+    $('noteText').value = ''; noteTime = null; $('noteHint').textContent = '';
+    renderNotes(); renderResults(); pushNotes(id);
+  }
+  $('noteText').addEventListener('input', () => {
+    if (noteTime === null && $('noteText').value.trim()) {
+      noteTime = video.currentTime;
+      $('noteHint').className = 'hint';
+      $('noteHint').textContent = 'Zeitpunkt festgehalten: ' + fmtTime(noteTime);
+    } else if (!$('noteText').value.trim()) { noteTime = null; $('noteHint').textContent = ''; }
+  });
+  $('noteText').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); addNote(); }
+    else if (e.key === 'Escape') { $('noteText').blur(); }
+  });
+  $('noteAdd').addEventListener('click', addNote);
+  video.addEventListener('timeupdate', markCurrentNote);
+
+  function notesMarkdown() {
+    const ids = Object.keys(notes).filter(id => noteCount(id));
+    if (!ids.length) return '';
+    const order = id => { const i = sessions.findIndex(s => s.id === id); return i < 0 ? 1e9 : i; };
+    ids.sort((a, b) => order(a) - order(b));
+    const web = /^https?:/.test(location.protocol) ? location.origin + location.pathname : '';
+    const lines = ['# DGN-Notizen', '', '_Exportiert am ' + new Date().toLocaleDateString('de-DE') + '_', ''];
+    ids.forEach(id => {
+      const s = byId(id);
+      lines.push('## ' + (s ? s.title : 'Session ' + id));
+      lines.push([s && s.room, s && s.code, 'Session ' + id].filter(Boolean).join(' · '), '');
+      liveNotes(id).forEach(n => {
+        const ts = fmtTime(n.t);
+        lines.push('- ' + (web ? '[' + ts + '](' + web + '#' + id + '@' + n.t + ')' : '**' + ts + '**') + ' ' + n.text.replace(/\n+/g, ' '));
+      });
+      lines.push('');
+    });
+    return lines.join('\n');
+  }
+  $('noteExport').addEventListener('click', async () => {
+    const md = notesMarkdown(), hint = $('noteHint');
+    if (!md) { hint.className = 'hint'; hint.textContent = 'Noch keine Notizen vorhanden.'; return; }
+    if (navigator.share && navigator.maxTouchPoints > 0) {
+      try { await navigator.share({ title: 'DGN-Notizen', text: md }); return; }
+      catch (e) { if (e.name === 'AbortError') return; }
+    }
+    let copied = false;
+    try { await navigator.clipboard.writeText(md); copied = true; } catch (e) {}
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([md], { type: 'text/markdown' }));
+    a.download = 'DGN-Notizen.md';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    hint.className = 'hint ok';
+    hint.textContent = (copied ? 'In die Zwischenablage kopiert und ' : '') + 'als DGN-Notizen.md gespeichert.';
+  });
+
   $('load').addEventListener('click', start);
   $('setupToggle').addEventListener('click', () => document.body.classList.toggle('show-setup'));
   speedBtn.addEventListener('click', () => setSpeed(speedIdx + 1));
@@ -1092,6 +1261,7 @@
   document.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT' || !video.src) return;
     if (e.key === ' ') { e.preventDefault(); video.paused ? video.play() : video.pause(); }
+    else if (e.key === 'n' || e.key === 'N') { e.preventDefault(); $('noteText').focus(); }
     else if (e.key === 'ArrowRight') video.currentTime += 10;
     else if (e.key === 'ArrowLeft') video.currentTime -= 10;
     else if (e.key === '>') { const s = [...SPEEDS].sort((a, b) => a - b); const n = s.find(v => v > video.playbackRate); if (n) setSpeed(SPEEDS.indexOf(n)); }
@@ -1119,9 +1289,10 @@
       if (!last) { setStatus('Nichts zum Weiterschauen gefunden.', 'err'); return; }
       id = last[0];
     } else {
-      const m = location.hash.match(/^#(\d{4,8})$/);
+      const m = location.hash.match(/^#(\d{4,8})(?:@(\d+))?$/);
       if (!m) return;
       id = m[1];
+      if (m[2]) pendingSeek = +m[2];
     }
     sidIn.value = id;
     if (tokenIn.value.trim()) start();
