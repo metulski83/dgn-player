@@ -488,9 +488,10 @@
   }
 
   function syncPatch(files, keepalive) {
-    if (!connected() || !Object.keys(files).length) return Promise.resolve();
+    if (!connected() || !Object.keys(files).length) return Promise.resolve(null);
     return gh('/gists/' + sync.gist, { method: 'PATCH', keepalive: !!keepalive, body: JSON.stringify({ files }) })
-      .then(syncedNow).catch(e => syncStatus('Sync-Fehler: ' + e.message, 'err'));
+      .then(() => { syncedNow(); return true; })
+      .catch(e => { syncStatus('Sync-Fehler: ' + e.message, 'err'); sync.lastError = e.message; return false; });
   }
   function syncPushPositions(ids, keepalive) {
     const files = {};
@@ -561,7 +562,11 @@
     // Read-merge-write: fetch what other devices added to this session first, then upload the union.
     notesTimers[id] = setTimeout(async () => {
       await syncPull();
-      syncPatch({ ['notes_' + id + '.json']: { content: JSON.stringify({ items: notes[id] || [] }) } });
+      const ok = await syncPatch({ ['notes_' + id + '.json']: { content: JSON.stringify({ items: notes[id] || [] }) } });
+      const hint = $('noteHint');
+      if (ok === true) { hint.className = 'hint ok'; hint.textContent = 'Notizen synchronisiert.'; }
+      else if (ok === false) { hint.className = 'hint err'; hint.textContent = 'Notiz nur auf diesem Gerät gespeichert. Sync-Fehler: ' + sync.lastError; }
+      else { hint.className = 'hint'; hint.textContent = 'Notiz gespeichert. Für andere Geräte den Geräte-Sync verbinden.'; }
     }, 800);
   }
   const notesFiles = () => Object.fromEntries(Object.keys(notes).map(id => ['notes_' + id + '.json', { content: JSON.stringify({ items: notes[id] }) }]));
@@ -1141,6 +1146,9 @@
   });
   renderSyncUI();
   if (connected()) syncPull();
+  // Keep a visible player current (e.g. Mac open next to the iPhone): poll gently, and on window focus.
+  setInterval(() => { if (!document.hidden && connected()) syncPull(); }, 45000);
+  window.addEventListener('focus', () => { if (connected()) syncPull(); });
   $('restart').addEventListener('click', () => {
     const id = loadedId;
     if (positions[id]) { positions[id] = { t: 0, d: positions[id].d, at: Date.now(), done: false }; savePositions(); syncPushPositions([id]); }
