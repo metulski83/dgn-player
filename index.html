@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Send no Referer (like a local file), so the video host sees the same requests as on the Mac. -->
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="DGN-Player">
+<title>DGN-Player</title>
+<style>
+  :root {
+    --bg: #eef1f4;
+    --surface: #ffffff;
+    --ink: #1c2733;
+    --muted: #5d6b7a;
+    --line: #d3dae1;
+    --accent: #2f5d8a;
+    --accent-ink: #ffffff;
+    --ok: #2e7d5b;
+    --err: #b3412e;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141a20;
+      --surface: #1d252d;
+      --ink: #e4e9ee;
+      --muted: #96a3b0;
+      --line: #33404c;
+      --accent: #7fb0de;
+      --accent-ink: #10202f;
+      --ok: #6fc59c;
+      --err: #e98a77;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 32px 20px 48px; }
+  h1 { font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: 0.95rem; }
+
+  .inputs {
+    display: grid;
+    grid-template-columns: 1fr 160px auto;
+    gap: 12px;
+    align-items: end;
+  }
+  @media (max-width: 640px) { .inputs { grid-template-columns: 1fr; } }
+  label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; }
+  input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+  }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .hint { font-size: 0.8rem; color: var(--muted); margin-top: 4px; min-height: 1.2em; }
+  .hint.ok { color: var(--ok); }
+  .hint.err { color: var(--err); }
+
+  button {
+    font: inherit;
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  select {
+    font: inherit; padding: 10px 12px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .sync { margin-top: 16px; }
+  .sync p { margin: 8px 0; }
+  .sync summary { cursor: pointer; }
+  #syncBadge { color: var(--ok); font-size: 0.8rem; margin-left: 6px; }
+  .program { margin-top: 24px; }
+  .prog-head { display: flex; justify-content: space-between; align-items: end; gap: 12px; margin-bottom: 4px; }
+  .prog-head label { margin: 0; }
+  .prog-head button { padding: 6px 12px; font-size: 0.85rem; }
+  .prog-actions { display: flex; gap: 8px; }
+  #clearProg { color: var(--err); }
+  .results { max-height: 300px; overflow-y: auto; border-radius: 8px; }
+  .results:not(:empty) { border: 1px solid var(--line); background: var(--surface); }
+  .item { display: flex; align-items: stretch; border-bottom: 1px solid var(--line); }
+  .item .main {
+    flex: 1; display: flex; gap: 12px; text-align: left; color: inherit;
+    border: 0; border-radius: 0; background: transparent; padding: 10px 12px; white-space: normal;
+  }
+  .item .star { border: 0; border-radius: 0; background: transparent; padding: 0 14px; font-size: 1.15rem; color: var(--muted); }
+  .item .star[aria-pressed="true"], #starBtn[aria-pressed="true"] { color: #c99700; }
+  #watchFilter[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .continue { margin-bottom: 18px; }
+  .continue:empty { display: none; }
+  .continue h3 { font-size: 0.85rem; color: var(--muted); font-weight: 600; margin: 0 0 6px; }
+  .cont-list { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+  .cont { flex: 0 0 220px; text-align: left; white-space: normal; padding: 10px 12px 12px; position: relative; overflow: hidden; }
+  .cont .t { font-weight: 600; font-size: 0.9rem; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .cont .m { display: block; color: var(--muted); font-size: 0.8rem; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .cont .bar { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--accent); }
+  .item:last-child { border-bottom: 0; }
+  .item:hover, .item.active { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .item .t { flex: 1; }
+  .item { position: relative; }
+  .item .bar { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--accent); opacity: 0.7; }
+  .item.done .t { color: var(--muted); }
+  .item.done .t::before { content: '✓ '; color: var(--ok); }
+  .item .m { color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .import { margin-top: 12px; padding: 16px; border: 1px dashed var(--line); border-radius: 8px; font-size: 0.9rem; }
+  .import p { margin: 0 0 8px; color: var(--muted); }
+  .import pre { white-space: pre-wrap; word-break: break-all; font-size: 0.75rem; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+  textarea { width: 100%; font: 0.8rem ui-monospace, Menlo, monospace; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+  #nowTitle { font-size: 1.1rem; font-weight: 600; margin: 0 0 10px; }
+  #nowTitle:empty { display: none; }
+  .player { margin-top: 28px; }
+  video {
+    width: 100%;
+    display: block;
+    background: #000;
+    border-radius: 10px;
+    aspect-ratio: 16 / 9;
+  }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; align-items: center; }
+  #speed { min-width: 92px; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .status { color: var(--muted); font-size: 0.9rem; margin-left: auto; }
+  .status.err { color: var(--err); }
+  .status.ok { color: var(--ok); }
+
+  progress { width: 100%; height: 6px; margin-top: 10px; accent-color: var(--accent); display: none; }
+
+  details { margin-top: 20px; font-size: 0.9rem; color: var(--muted); }
+  details pre {
+    white-space: pre-wrap; word-break: break-all;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 8px; padding: 12px; color: var(--ink);
+    font-size: 0.8rem;
+  }
+  kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>DGN-Player</h1>
+  <p class="sub">Webcast-Token und Session-ID eingeben, abspielen oder herunterladen.</p>
+
+  <div class="inputs">
+    <div>
+      <label for="token">Token</label>
+      <input id="token" autocomplete="off" spellcheck="false"
+             placeholder="Token, Video-URL oder kompletten curl-Befehl einfügen">
+      <div class="hint" id="tokenHint"></div>
+    </div>
+    <div>
+      <label for="sid">Session-ID</label>
+      <input id="sid" inputmode="numeric" placeholder="111545">
+      <div class="hint"></div>
+    </div>
+    <div>
+      <button class="primary" id="load">Abspielen</button>
+      <div class="hint"></div>
+    </div>
+  </div>
+
+  <details id="syncBox" class="sync">
+    <summary>Geräte-Sync über GitHub <span id="syncBadge"></span></summary>
+    <p>Abspielpositionen und Programmliste werden in einem geheimen Gist in deinem GitHub-Konto abgeglichen. Auf jedem Gerät einmal denselben GitHub-Token eingeben.</p>
+    <input id="ghToken" autocomplete="off" spellcheck="false" placeholder="GitHub-Token (ghp_…)">
+    <div class="controls">
+      <button class="primary" id="syncConnect" type="button">Verbinden</button>
+      <button id="syncNow" type="button" hidden>Jetzt synchronisieren</button>
+      <button id="syncOff" type="button" hidden>Trennen</button>
+    </div>
+    <div class="hint" id="syncStatus"></div>
+  </details>
+
+  <section class="program">
+    <div id="continue" class="continue"></div>
+    <div class="prog-head">
+      <label for="search">Vortrag suchen</label>
+      <span class="prog-actions">
+        <button id="watchFilter" type="button" aria-pressed="false">★ Merkliste</button>
+        <button id="exportProg" type="button" hidden>Liste kopieren</button>
+        <button id="clearProg" type="button" hidden>Programm löschen</button>
+        <button id="toggleImport" type="button">Programm importieren</button>
+      </span>
+    </div>
+    <input id="search" placeholder="Titel oder ID eintippen" autocomplete="off">
+    <div class="hint" id="progHint"></div>
+    <div id="results" class="results"></div>
+
+    <div id="importBox" class="import" hidden>
+      <label for="rooms">Nur diese Säle (durch Komma getrennt, leer = alle)</label>
+      <input id="rooms" spellcheck="false" style="margin-bottom:12px">
+      <p>Programmseite eines Tages in Safari öffnen, Konsole mit <kbd>⌥⌘C</kbd> aufrufen, diesen Befehl einfügen und Enter drücken. Die Liste landet in der Zwischenablage.</p>
+      <pre id="snippet"></pre>
+      <button id="copySnippet" type="button">Befehl kopieren</button>
+      <label for="importText" style="margin-top:12px">Ergebnis hier einfügen (oder eine JSON-Antwort aus dem Netzwerk-Tab)</label>
+      <textarea id="importText" rows="4" spellcheck="false"></textarea>
+      <div class="controls">
+        <button class="primary" id="doImport" type="button">Hinzufügen</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="player">
+    <h2 id="nowTitle"></h2>
+    <video id="video" controls playsinline preload="metadata"></video>
+    <div class="controls">
+      <button id="speed" disabled title="Geschwindigkeit ändern (Tasten &lt; und &gt;)">1×</button>
+      <button id="restart" hidden>Von vorn</button>
+      <button id="starBtn" disabled>☆ Merken</button>
+      <button id="cancelNext" hidden>Nicht weiter</button>
+      <button id="download" disabled>Herunterladen</button>
+      <button id="copyCurl" disabled>curl-Befehl kopieren</button>
+      <select id="preset" title="Komprimierung">
+        <option value="small">Klein (720p, 15 fps)</option>
+        <option value="medium" selected>Mittel (1080p)</option>
+        <option value="tiny">Sehr klein (540p, 10 fps)</option>
+      </select>
+      <button id="compress" disabled>Komprimiert laden</button>
+      <select id="sens" title="Wie empfindlich Folienwechsel erkannt werden">
+        <option value="0.3">Folien: wenige</option>
+        <option value="0.15" selected>Folien: normal</option>
+        <option value="0.07">Folien: viele</option>
+      </select>
+      <button id="slides" disabled>Folien als PDF</button>
+      <span class="status" id="status"></span>
+    </div>
+    <progress id="progress" max="100" value="0"></progress>
+  </section>
+
+  <details id="hints">
+    <summary>Tastenkürzel und Hinweise</summary>
+    <p><kbd>Leertaste</kbd> Pause, <kbd>←</kbd>/<kbd>→</kbd> 10 Sekunden, <kbd>&lt;</kbd>/<kbd>&gt;</kbd> langsamer/schneller.</p>
+    <p>Lässt der Server den Download im Browser nicht zu, kopiert „Herunterladen“ stattdessen den curl-Befehl. Im Terminal einfügen und Enter drücken.</p>
+    <pre id="curlPreview">Noch kein Video geladen.</pre>
+  </details>
+</main>
+
+<script>
+(function () {
+  const SPEEDS = [1, 1.25, 1.5, 1.75, 2, 2.5, 0.75];
+  const BASE = 'https://assets.m-anage.com/DGN/NW2026/session/';
+  const $ = id => document.getElementById(id);
+  const tokenIn = $('token'), sidIn = $('sid'), video = $('video');
+  const speedBtn = $('speed'), dlBtn = $('download'), curlBtn = $('copyCurl');
+  const statusEl = $('status'), tokenHint = $('tokenHint'), progress = $('progress');
+  let speedIdx = 0;
+
+  function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function load(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+
+  function setStatus(msg, kind) {
+    statusEl.textContent = msg;
+    statusEl.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  // Accepts a bare token, a full video URL or a pasted curl command.
+  function parseInput() {
+    const raw = tokenIn.value.trim();
+    const jwtMatch = raw.match(/jwt=([A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)/);
+    const sidMatch = raw.match(/session\/(\d+)\/video\.mp4/);
+    if (sidMatch && !sidIn.value) sidIn.value = sidMatch[1];
+    if (jwtMatch) { tokenIn.value = jwtMatch[1]; }
+    else {
+      const bare = raw.match(/eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+/);
+      if (bare) tokenIn.value = bare[0];
+    }
+    checkToken();
+  }
+
+  function checkToken() {
+    const t = tokenIn.value.trim();
+    tokenHint.className = 'hint';
+    if (!t) { tokenHint.textContent = ''; return; }
+    try {
+      const part = t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(part + '==='.slice((part.length + 3) % 4)));
+      if (payload.exp) {
+        const exp = new Date(payload.exp * 1000);
+        const fmt = exp.toLocaleString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        if (exp < new Date()) { tokenHint.textContent = 'Abgelaufen seit ' + fmt + '. Neuen Token aus Safari kopieren.'; tokenHint.classList.add('err'); }
+        else { tokenHint.textContent = 'Gültig bis ' + fmt; tokenHint.classList.add('ok'); }
+      } else { tokenHint.textContent = ''; }
+    } catch (e) {
+      tokenHint.textContent = 'Das sieht nicht wie ein gültiger Token aus.';
+      tokenHint.classList.add('err');
+    }
+  }
+
+  function videoUrl() {
+    return BASE + encodeURIComponent(sidIn.value.trim()) + '/video.mp4?jwt=' + tokenIn.value.trim();
+  }
+  let sessions = [];
+  try { sessions = JSON.parse(load('dgn_sessions') || '[]'); } catch (e) { sessions = []; }
+  const byId = id => sessions.find(s => s.id === String(id));
+
+  // Playback positions per session: { id: { t: seconds, d: duration, at: timestamp, done: bool } }
+  let positions = {};
+  try { positions = JSON.parse(load('dgn_pos') || '{}') || {}; } catch (e) { positions = {}; }
+  function savePositions() { store('dgn_pos', JSON.stringify(positions)); }
+  // The session whose video is actually loaded; sidIn may already show the next one while switching.
+  let loadedId = '';
+  let resumeDone = false, lastSave = 0;
+  function rememberPosition(force) {
+    const id = loadedId;
+    if (!id || !video.src || !resumeDone || !isFinite(video.duration) || !video.duration) return;
+    const now = Date.now();
+    if (!force && now - lastSave < 5000) return;
+    lastSave = now;
+    const t = Math.floor(video.currentTime);
+    const prev = positions[id];
+    // Unchanged position: keep the old timestamp so an idle device never overwrites newer progress from another one.
+    if (prev && Math.abs(prev.t - t) < 2) return;
+    const done = video.duration - video.currentTime < 30;
+    positions[id] = { t, d: Math.floor(video.duration), at: now, done: done || !!(prev && prev.done) };
+    savePositions();
+    if (force || now - lastPush > 30000) { lastPush = now; syncPushPositions([id], force === 'hide'); }
+  }
+  let lastPush = 0;
+
+  // --- Device sync via a secret GitHub Gist --------------------------------
+  // Files in the gist: pos_<id>.json per session (only the watched one is written, so devices never clobber
+  // each other's other sessions) and program.json ({at, sessions}, last writer wins).
+  const GIST_DESC = 'DGN-Player Sync';
+  const sync = { token: load('dgn_gh_token'), gist: load('dgn_gist_id'), busy: null };
+  let progAt = +load('dgn_prog_at') || (sessions.length ? 1 : 0);
+  const connected = () => !!(sync.token && sync.gist);
+
+  function gh(path, opts) {
+    return fetch('https://api.github.com' + path, Object.assign({
+      cache: 'no-store',
+      headers: { 'Authorization': 'Bearer ' + sync.token, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' }
+    }, opts || {})).then(r => {
+      if (!r.ok) throw new Error(r.status === 401 ? 'Token ungültig oder abgelaufen' : r.status === 404 ? 'Gist nicht gefunden' : 'GitHub ' + r.status);
+      return r.json();
+    });
+  }
+  function syncStatus(msg, kind) { $('syncStatus').textContent = msg; $('syncStatus').className = 'hint' + (kind ? ' ' + kind : ''); }
+  const syncedNow = () => syncStatus('Synchronisiert um ' + new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }), 'ok');
+
+  function renderSyncUI() {
+    const c = connected();
+    $('syncConnect').hidden = c; $('ghToken').hidden = c;
+    $('syncNow').hidden = !c; $('syncOff').hidden = !c;
+    $('syncBadge').textContent = c ? '● verbunden' : '';
+  }
+
+  function syncPull() {
+    if (!connected()) return Promise.resolve(false);
+    if (sync.busy) return sync.busy;
+    sync.busy = (async () => {
+      try {
+        const g = await gh('/gists/' + sync.gist + '?t=' + Date.now());
+        let posChanged = false, progChanged = false;
+        for (const [name, f] of Object.entries(g.files || {})) {
+          let content = f.content;
+          if (f.truncated && f.raw_url) content = await fetch(f.raw_url, { cache: 'no-store' }).then(r => r.text());
+          let data;
+          try { data = JSON.parse(content); } catch (e) { continue; }
+          const pm = name.match(/^pos_(\d+)\.json$/);
+          if (pm) {
+            const loc = positions[pm[1]];
+            if (data && typeof data.t === 'number' && (!loc || (data.at || 0) > (loc.at || 0))) { positions[pm[1]] = data; posChanged = true; }
+          } else if (name === 'watchlist.json' && data && Array.isArray(data.ids) && (data.at || 0) > watchAt) {
+            watchlist.splice(0, watchlist.length, ...data.ids.map(String));
+            watchAt = data.at; saveWatch();
+            progChanged = true;
+          } else if (name === 'program.json' && data && Array.isArray(data.sessions) && (data.at || 0) > progAt) {
+            sessions.splice(0, sessions.length, ...data.sessions.filter(x => x && x.id).map(cleanSession));
+            progAt = data.at; store('dgn_prog_at', String(progAt));
+            progChanged = true;
+          }
+        }
+        if (posChanged) savePositions();
+        if (progChanged) store('dgn_sessions', JSON.stringify(sessions));
+        if (posChanged || progChanged) renderResults();
+        syncedNow();
+        return posChanged || progChanged;
+      } catch (e) { syncStatus('Sync-Fehler: ' + e.message, 'err'); return false; }
+      finally { sync.busy = null; }
+    })();
+    return sync.busy;
+  }
+
+  function syncPatch(files, keepalive) {
+    if (!connected() || !Object.keys(files).length) return Promise.resolve();
+    return gh('/gists/' + sync.gist, { method: 'PATCH', keepalive: !!keepalive, body: JSON.stringify({ files }) })
+      .then(syncedNow).catch(e => syncStatus('Sync-Fehler: ' + e.message, 'err'));
+  }
+  function syncPushPositions(ids, keepalive) {
+    const files = {};
+    ids.forEach(id => { if (positions[id]) files['pos_' + id + '.json'] = { content: JSON.stringify(positions[id]) }; });
+    return syncPatch(files, keepalive);
+  }
+  function syncPushProgram() {
+    return syncPatch({ 'program.json': { content: JSON.stringify({ at: progAt, sessions }) } });
+  }
+  function touchProgram() { progAt = Date.now(); store('dgn_prog_at', String(progAt)); syncPushProgram(); }
+
+  // --- Watchlist (ordered ids), synced as watchlist.json ({at, ids}, last writer wins) ---
+  let watchlist = [];
+  try { watchlist = (JSON.parse(load('dgn_watch') || '[]') || []).map(String); } catch (e) { watchlist = []; }
+  let watchAt = +load('dgn_watch_at') || 0;
+  let watchFilter = false;
+  function saveWatch() { store('dgn_watch', JSON.stringify(watchlist)); store('dgn_watch_at', String(watchAt)); }
+  const watchFile = () => ({ 'watchlist.json': { content: JSON.stringify({ at: watchAt, ids: watchlist }) } });
+  function toggleWatch(id) {
+    id = String(id);
+    const i = watchlist.indexOf(id);
+    if (i >= 0) watchlist.splice(i, 1); else watchlist.push(id);
+    watchAt = Date.now(); saveWatch(); renderResults();
+    syncPatch(watchFile());
+  }
+  function updateStar() {
+    const id = sidIn.value.trim(), btn = $('starBtn');
+    const on = !!id && watchlist.includes(id);
+    btn.textContent = on ? '★ Gemerkt' : '☆ Merken';
+    btn.setAttribute('aria-pressed', String(on));
+    $('watchFilter').textContent = '★ Merkliste' + (watchlist.length ? ' (' + watchlist.length + ')' : '');
+  }
+
+  // Most recently watched, unfinished sessions (any device, once synced).
+  function lastUnfinished(n) {
+    return Object.entries(positions).filter(([, p]) => p && !p.done && p.t > 10 && p.d)
+      .sort((a, b) => (b[1].at || 0) - (a[1].at || 0)).slice(0, n);
+  }
+  function nextInWatchlist(cur) {
+    const open = id => id !== cur && !(positions[id] && positions[id].done);
+    const i = watchlist.indexOf(cur);
+    return watchlist.slice(i + 1).find(open) || watchlist.find(open) || null;
+  }
+
+  async function syncConnect() {
+    sync.token = $('ghToken').value.trim();
+    if (!sync.token) { syncStatus('Bitte einen GitHub-Token einfügen.', 'err'); return; }
+    syncStatus('Verbinde …');
+    try {
+      let gist = null;
+      for (let page = 1; page <= 5 && !gist; page++) {
+        const list = await gh('/gists?per_page=100&page=' + page);
+        gist = list.find(x => x.description === GIST_DESC);
+        if (list.length < 100) break;
+      }
+      if (!gist) {
+        gist = await gh('/gists', { method: 'POST', body: JSON.stringify({ description: GIST_DESC, public: false,
+          files: { 'program.json': { content: JSON.stringify({ at: progAt, sessions }) } } }) });
+      }
+      sync.gist = gist.id;
+      store('dgn_gh_token', sync.token); store('dgn_gist_id', sync.gist);
+      renderSyncUI();
+      await syncPull();
+      // Bring everything this device knows into the gist (newer entries only win on the other devices' next pull).
+      await syncPushPositions(Object.keys(positions));
+      await syncPushProgram();
+      await syncPatch(watchFile());
+    } catch (e) {
+      sync.token = ''; sync.gist = '';
+      syncStatus('Verbindung fehlgeschlagen: ' + e.message + '. Hat der Token die Berechtigung „gist“?', 'err');
+    }
+  }
+  const fmtTime = s => { s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60;
+    return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); };
+
+  function slug(t) {
+    return t.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue').replace(/ß/g, 'ss')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 60);
+  }
+  function baseName() {
+    const id = sidIn.value.trim(), s = byId(id);
+    return 'DGN_' + id + (s ? '_' + slug(s.title) : '');
+  }
+  function fileName() { return baseName() + '.mp4'; }
+  function curlCmd(out) {
+    return "curl -f -C - --progress-bar -H 'Referer: https://www.dgnvirtualmeeting.org/' -o '" + (out || fileName()) + "' '" + videoUrl() + "'";
+  }
+
+  // Parallel download with aria2c when installed (several connections), otherwise curl.
+  // if/else instead of a fallback chain: a half-finished aria2 file must not be resumed by curl.
+  // Spaces after URLs: zsh url-quote-magic would otherwise turn a following ';' into '\;' on paste.
+  // Downloads to <out>.part and renames on success, so an existing <out> is always complete and gets reused.
+  function dlCmd(out) {
+    const part = out + '.part';
+    return "{ [ -s '" + out + "' ] && echo 'Original schon vorhanden, Download übersprungen.' || { " +
+      "if command -v aria2c >/dev/null; then aria2c -c -x 8 -s 8 -k 2M --file-allocation=none --console-log-level=warn --summary-interval=0 " +
+      "--header='Referer: https://www.dgnvirtualmeeting.org/' -o '" + part + "' '" + videoUrl() + "' ; else " + curlCmd(part) + " ; fi && mv '" + part + "' '" + out + "'; }; }";
+  }
+
+  // Hardware HEVC encoder (VideoToolbox) with a fixed bitrate: -q:v only exists on Apple Silicon.
+  // allow_sw falls back to Apple's software encoder on Macs without HEVC hardware. hvc1 keeps it playable in QuickTime/iOS.
+  const PRESETS = {
+    small:  { vf: 'scale=-2:720,fps=15', vb: '700k', ab: '64k', ac: 1, suffix: 'klein' },
+    medium: { vf: "scale=-2:'min(1080,ih)'", vb: '1500k', ab: '96k', ac: 2, suffix: 'mittel' },
+    tiny:   { vf: 'scale=-2:540,fps=10', vb: '350k', ab: '48k', ac: 1, suffix: 'sehrklein' }
+  };
+  function compressCmd() {
+    const p = PRESETS[$('preset').value];
+    const raw = baseName() + '_original.mp4';
+    const out = baseName() + '_' + p.suffix + '.mp4';
+    return dlCmd(raw) + ' && ffmpeg -hide_banner -loglevel warning -stats -y -hwaccel videotoolbox -i \'' + raw + "' -vf \"" + p.vf +
+      '" -c:v hevc_videotoolbox -allow_sw 1 -b:v ' + p.vb + ' -tag:v hvc1 -c:a aac -b:a ' + p.ab + ' -ac ' + p.ac +
+      " -movflags +faststart '" + out + "' && rm '" + raw + "' && echo 'Fertig: " + out + "'";
+  }
+  // Python helper written next to the slide images; can be re-run after deleting unwanted slides.
+  const PDF_PY = [
+    "import glob, os, sys",
+    "from PIL import Image, ImageDraw, ImageFont, ImageChops, ImageStat",
+    "d = os.path.dirname(os.path.abspath(__file__))",
+    "out = os.path.join(os.path.dirname(d), os.path.basename(d)[:-len('_folien')] + '_Folien.pdf')",
+    "files = sorted(glob.glob(os.path.join(d, '*.jpg')))",
+    "if not files: sys.exit('Keine Folienbilder gefunden.')",
+    "pages, prev = [], None",
+    "for f in files:",
+    "    im = Image.open(f).convert('RGB')",
+    "    thumb = im.convert('L').resize((64, 36))",
+    "    if prev is not None and ImageStat.Stat(ImageChops.difference(prev, thumb)).mean[0] / 255 < 0.02:",
+    "        continue  # nahezu identisch mit der vorigen Folie",
+    "    prev = thumb",
+    "    s = int(os.path.splitext(os.path.basename(f))[0])",
+    "    label = '%d:%02d:%02d' % (s // 3600, s // 60 % 60, s % 60)",
+    "    fs = max(14, im.width // 70)",
+    "    try: font = ImageFont.load_default(size=fs)",
+    "    except TypeError: font = ImageFont.load_default()",
+    "    dr = ImageDraw.Draw(im)",
+    "    x0, y0, x1, y1 = dr.textbbox((0, 0), label, font=font)",
+    "    pad = max(4, fs // 3)",
+    "    dr.rectangle([0, im.height - (y1 - y0) - 2 * pad, (x1 - x0) + 2 * pad, im.height], fill=(0, 0, 0))",
+    "    dr.text((pad - x0, im.height - (y1 - y0) - pad - y0), label, fill=(255, 255, 255), font=font)",
+    "    pages.append(im)",
+    "pages[0].save(out, save_all=True, append_images=pages[1:], resolution=150)",
+    "print('%d Folien -> %s' % (len(pages), out))"
+  ].join('\n');
+
+  function slidesCmd() {
+    const B = baseName();
+    const t = $('sens').value;
+    const raw = B + '_original.mp4';
+    return [
+      "B='" + B + "'; IN=''; for f in \"${B}_original.mp4\" \"${B}_mittel.mp4\" \"${B}_klein.mp4\" \"${B}_sehrklein.mp4\"; do [ -s \"$f\" ] && { IN=\"$f\"; break; }; done; " +
+      "[ -n \"$IN\" ] || { " + dlCmd(raw) + " && IN='" + raw + "'; } && " +
+      "mkdir -p \"${B}_folien\" && echo 'Suche Folienwechsel …' && " +
+      "ffmpeg -hide_banner -loglevel error -stats -hwaccel videotoolbox -i \"$IN\" " +
+      "-vf \"fps=1,select='eq(n,0)+gt(scene," + t + ")'\" -fps_mode vfr -frame_pts 1 -q:v 3 \"${B}_folien/%05d.jpg\" && " +
+      "cat > \"${B}_folien/pdf_erstellen.py\" <<'PY'",
+      PDF_PY,
+      "PY",
+      "python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --quiet pillow; python3 \"${B}_folien/pdf_erstellen.py\""
+    ].join('\n');
+  }
+  async function copySlides() {
+    const cmd = slidesCmd();
+    $('curlPreview').textContent = cmd;
+    try { await navigator.clipboard.writeText(cmd); setStatus('Folien-Befehl kopiert. Im Terminal einfügen.', 'ok'); }
+    catch (e) { setStatus('Kopieren nicht möglich. Befehl steht unter „Hinweise“.', 'err'); $('hints').open = true; }
+  }
+
+  async function copyCompress() {
+    const cmd = compressCmd();
+    $('curlPreview').textContent = cmd;
+    try { await navigator.clipboard.writeText(cmd); setStatus('Befehl kopiert. Im Terminal einfügen.', 'ok'); }
+    catch (e) { setStatus('Kopieren nicht möglich. Befehl steht unter „Hinweise“.', 'err'); $('hints').open = true; }
+  }
+
+  function start() {
+    parseInput();
+    const sid = sidIn.value.trim(), tok = tokenIn.value.trim();
+    if (!tok) { setStatus('Bitte einen Token eingeben.', 'err'); tokenIn.focus(); return; }
+    if (!/^\d+$/.test(sid)) { setStatus('Bitte eine Session-ID aus Ziffern eingeben.', 'err'); sidIn.focus(); return; }
+    store('dgn_token', tok);
+    store('dgn_sid', sid);
+    rememberPosition(true);
+    resumeDone = false;
+    cancelNext();
+    $('starBtn').disabled = false;
+    syncPull();
+    $('restart').hidden = true;
+    loadedId = sid;
+    video.src = videoUrl();
+    video.playbackRate = SPEEDS[speedIdx];
+    video.play().catch(() => {});
+    [speedBtn, dlBtn, curlBtn, $('compress'), $('slides')].forEach(b => b.disabled = false);
+    $('curlPreview').textContent = curlCmd();
+    const s = byId(sid);
+    $('nowTitle').textContent = s ? s.title : '';
+    document.title = s ? s.title : 'DGN ' + sid;
+    renderResults();
+    setStatus('Lädt …');
+  }
+
+  function setSpeed(i) {
+    speedIdx = (i + SPEEDS.length) % SPEEDS.length;
+    video.playbackRate = SPEEDS[speedIdx];
+    speedBtn.textContent = String(SPEEDS[speedIdx]).replace('.', ',') + '×';
+  }
+
+  async function copyCurl(msg) {
+    const cmd = curlCmd();
+    try { await navigator.clipboard.writeText(cmd); setStatus(msg || 'curl-Befehl kopiert.', 'ok'); }
+    catch (e) { setStatus('Kopieren nicht möglich. Befehl steht unten unter „Hinweise“.', 'err'); $('hints').open = true; }
+  }
+
+  async function download() {
+    dlBtn.disabled = true;
+    setStatus('Download startet …');
+    try {
+      const res = await fetch(videoUrl(), { mode: 'cors' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const total = +res.headers.get('Content-Length') || 0;
+      const reader = res.body.getReader();
+      const chunks = []; let got = 0;
+      progress.style.display = 'block'; progress.value = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value); got += value.length;
+        const mb = (got / 1048576).toFixed(0);
+        if (total) { progress.value = got / total * 100; setStatus(mb + ' von ' + (total / 1048576).toFixed(0) + ' MB'); }
+        else setStatus(mb + ' MB geladen');
+      }
+      const blob = new Blob(chunks, { type: 'video/mp4' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = fileName();
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+      setStatus('Gespeichert als ' + fileName(), 'ok');
+    } catch (e) {
+      await copyCurl('Browser-Download blockiert. curl-Befehl kopiert, im Terminal einfügen.');
+    } finally {
+      progress.style.display = 'none';
+      dlBtn.disabled = false;
+    }
+  }
+
+  // --- Programme import ---------------------------------------------------
+  // Runs in Safari's console on the programme page: collects session links with their text.
+  const DEFAULT_ROOMS = 'A3, A4, A5, A6-7, Helsinki 1, Helsinki 2, Budapest 1';
+  const roomsIn = $('rooms');
+  roomsIn.value = load('dgn_rooms') || DEFAULT_ROOMS;
+  const roomList = () => roomsIn.value.split(',').map(s => s.trim()).filter(Boolean);
+  // "A 4 (City-Cube)" / "A 3 - Wissenschaftsforum" / "Saal A6–7" -> "a4" / "a3" / "a6-7"
+  const normRoom = s => String(s || '').replace(/\s+/g, ' ').split('(')[0].split(/\s[-\u2010-\u2015]\s/)[0]
+    .toLowerCase().replace(/[\u2010-\u2015]/g, '-').replace(/\b(saal|raum|hall|room)\b/g, '').replace(/[^a-z0-9-]/g, '');
+  function matchRoom(value) {
+    const n = normRoom(value);
+    if (!n) return null;
+    return roomList().find(r => normRoom(r) === n) || null;
+  }
+
+  // This function is serialised into the console command; it runs on the programme page, not here.
+  function dgnScrape(rooms) {
+    const norm = s => String(s || '').replace(/\s+/g, ' ').split('(')[0].split(/\s[-\u2010-\u2015]\s/)[0]
+      .toLowerCase().replace(/[\u2010-\u2015]/g, '-').replace(/\b(saal|raum|hall|room)\b/g, '').replace(/[^a-z0-9-]/g, '');
+    const want = rooms.map(r => ({ name: r, n: norm(r) }));
+    const leaves = [];
+    document.querySelectorAll('body *').forEach(el => {
+      if (el.children.length > 2 || el.closest('a[href*="/session/"]')) return;
+      const t = (el.innerText || '').replace(/\s+/g, ' ').trim();
+      if (!t || t.length > 60) return;
+      const r = el.getBoundingClientRect();
+      if (r.width && r.height) leaves.push({ el, t, r, cx: r.left + r.width / 2, cy: r.top + r.height / 2 });
+    });
+    const heads = leaves.filter(l => want.some(w => w.n === norm(l.t)));
+    let pick = null;
+    if (heads.length) {
+      const xs = heads.map(h => h.cx), ys = heads.map(h => h.cy);
+      const cols = Math.max(...xs) - Math.min(...xs) >= Math.max(...ys) - Math.min(...ys);
+      const lines = [...new Set(heads.map(h => Math.round(cols ? h.cy : h.cx)))];
+      // All header cells in the same line(s), wanted or not, so other halls are not mis-assigned.
+      const allHeads = leaves.filter(l => lines.some(v => Math.abs((cols ? l.cy : l.cx) - v) < 15));
+      pick = (cx, cy) => {
+        let best = null, d = Infinity;
+        allHeads.forEach(h => { const dd = Math.abs(cols ? h.cx - cx : h.cy - cy); if (dd < d) { d = dd; best = h; } });
+        const w = best && want.find(x => x.n === norm(best.t));
+        return w ? w.name : '';
+      };
+    }
+    const out = new Map();
+    let total = 0;
+    document.querySelectorAll('a[href*="/session/"]').forEach(a => {
+      const m = a.href.match(/session\/(\d+)/);
+      if (!m || out.has(m[1])) return;
+      total++;
+      const c = a.closest('li,article,[class*="session" i],[class*="item" i]') || a;
+      const text = (c.innerText || '').replace(/\s+/g, ' ').trim();
+      const r = a.getBoundingClientRect();
+      let room = pick ? pick(r.left + r.width / 2, r.top + r.height / 2) : '';
+      if (!room && !pick) { const hit = want.find(w => text.toLowerCase().replace(/\s+/g, '').includes(w.n)); if (hit) room = hit.name; }
+      if (!want.length || room) {
+        const lines = (a.innerText || c.innerText || '').split('\n').map(l => l.trim()).filter(Boolean);
+        const isTag = l => /^(on demand|live|replay|neu|new|abgesagt|cancelled)$/i.test(l) || /^\d{1,2}:\d{2}/.test(l);
+        const isCode = l => /^[A-Z]{2,}(-[A-Z0-9]+)+$/.test(l);
+        const code = lines.find(isCode) || '';
+        const title = lines.find(l => !isTag(l) && !isCode(l)) || lines[0] || '';
+        out.set(m[1], { id: m[1], room, code, title, text: text.slice(0, 300) });
+      }
+    });
+    const list = [...out.values()];
+    copy(JSON.stringify(list));
+    console.log(list.length + ' von ' + total + ' Sessions kopiert. Erkannte Säle: ' + ([...new Set(heads.map(h => h.t))].join(' | ') || 'keine'));
+  }
+  function snippet() { return '(' + dgnScrape.toString() + ')(' + JSON.stringify(roomList()) + ')'; }
+  function showSnippet() { $('snippet').textContent = snippet(); }
+  roomsIn.addEventListener('input', () => { store('dgn_rooms', roomsIn.value); showSnippet(); });
+  showSnippet();
+
+  // Repairs entries whose title is only a badge (e.g. imported with the older console command).
+  const TAG_RE = /^(on demand|live|replay|neu|new|abgesagt|cancelled)\b\s*/i;
+  const CODE_RE = /^([A-Z]{2,}(?:-[A-Z0-9]+)+)\s*/;
+  function cleanSession(s) {
+    let t = String(s.title || '').trim();
+    if (!t || TAG_RE.test(t) && t.replace(TAG_RE, '').trim() === '') {
+      let rest = String(s.text || '').trim();
+      while (TAG_RE.test(rest)) rest = rest.replace(TAG_RE, '');
+      const cm = rest.match(CODE_RE);
+      if (cm) { if (!s.code) s.code = cm[1]; rest = rest.slice(cm[0].length); }
+      t = rest || t;
+    }
+    t = t.replace(TAG_RE, '');
+    const cm2 = t.match(CODE_RE);
+    if (cm2 && t.length > cm2[0].length) { if (!s.code) s.code = cm2[1]; t = t.slice(cm2[0].length); }
+    s.title = t.length > 160 ? t.slice(0, 157) + '…' : t;
+    return s;
+  }
+  sessions.forEach(cleanSession);
+  store('dgn_sessions', JSON.stringify(sessions));
+
+  const SKIP_PATH = /present|talk|abstract|speaker|person|author|chair|track|topic|categor/i;
+  const roomOf = o => {
+    const k = Object.keys(o).find(k => /room|raum|saal|hall|location/i.test(k));
+    if (!k) return '';
+    const v = o[k];
+    if (typeof v === 'string') return v;
+    if (v && typeof v === 'object') return v.name || v.title || v.shortName || '';
+    return '';
+  };
+  function extractSessions(raw) {
+    const found = new Map();
+    const add = (id, title, start, text, room, code) => {
+      id = String(id).trim();
+      title = String(title || '').replace(/\s+/g, ' ').trim();
+      if (!/^\d{4,8}$/.test(id) || !title || found.has(id)) return;
+      found.set(id, cleanSession({ id, title, start: start || '', text: text || '', room: room || '', code: code || '' }));
+    };
+    let data;
+    try { data = JSON.parse(raw); } catch (e) { data = undefined; }
+    if (data !== undefined) {
+      const walk = (o, path) => {
+        if (Array.isArray(o)) { o.forEach(x => walk(x, path)); return; }
+        if (!o || typeof o !== 'object') return;
+        const keys = Object.keys(o);
+        const idK = keys.find(k => /^(id|sessionid|session_id)$/i.test(k));
+        const tK = keys.find(k => /^(title|titel|name|sessiontitle|session_title)$/i.test(k) && typeof o[k] === 'string');
+        if (idK && tK && !SKIP_PATH.test(path) && !/(room|raum|saal|hall|location)[^.]*$/i.test(path)) {
+          const sK = keys.find(k => /start|begin|time/i.test(k) && typeof o[k] === 'string');
+          add(o[idK], o[tK], sK ? o[sK] : '', o.text, roomOf(o), o.code);
+        }
+        keys.forEach(k => walk(o[k], path + '.' + k));
+      };
+      walk(data, '');
+    } else {
+      raw.split('\n').forEach(line => {
+        const m = line.match(/(?:session\/)?(\d{5,8})\b[\s:;,|\t-]*(.+)/);
+        if (m) add(m[1], m[2]);
+      });
+    }
+    return [...found.values()];
+  }
+
+  function fmtStart(s) {
+    if (!s) return '';
+    const d = new Date(s);
+    if (isNaN(d)) return s.slice(0, 16);
+    return d.toLocaleString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function renderResults() {
+    renderContinue();
+    updateStar();
+    const box = $('results');
+    const q = $('search').value.trim().toLowerCase();
+    const hint = $('progHint');
+    $('clearProg').hidden = !sessions.length;
+    $('exportProg').hidden = !sessions.length;
+    if (!sessions.length) {
+      box.innerHTML = '';
+      hint.className = 'hint';
+      hint.textContent = 'Noch kein Programm importiert. Oben rechts auf „Programm importieren“ tippen.';
+      return;
+    }
+    const words = q.split(/\s+/).filter(Boolean);
+    const pool = watchFilter ? watchlist.map(byId).filter(Boolean) : sessions;
+    const list = pool.filter(s => {
+      const hay = (s.id + ' ' + (s.code || '') + ' ' + s.title + ' ' + (s.room || '') + ' ' + s.text).toLowerCase();
+      return words.every(w => hay.includes(w));
+    });
+    hint.className = 'hint';
+    hint.textContent = watchFilter
+      ? (watchlist.length ? list.length + ' gemerkte Sessions. Nach dem Ende startet automatisch die nächste.' : 'Noch nichts gemerkt. Tippe in der Liste auf ☆.')
+      : list.length + ' von ' + sessions.length + ' Sessions';
+    box.innerHTML = '';
+    const cur = sidIn.value.trim();
+    list.slice(0, 300).forEach(s => box.appendChild(sessionRow(s, cur)));
+  }
+
+  function sessionRow(s, cur) {
+    const row = document.createElement('div');
+    row.className = 'item' + (s.id === cur ? ' active' : '');
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'main';
+    const t = document.createElement('span'); t.className = 't'; t.textContent = s.title;
+    const m = document.createElement('span'); m.className = 'm'; m.textContent = [s.room, fmtStart(s.start), s.code || s.id].filter(Boolean).join('  ');
+    b.append(t, m);
+    const pr = positions[s.id];
+    if (pr && pr.d) {
+      const f = Math.min(1, pr.t / pr.d);
+      if (pr.done) row.classList.add('done');
+      else if (f > 0.01) {
+        const bar = document.createElement('span'); bar.className = 'bar'; bar.style.width = (f * 100).toFixed(1) + '%';
+        row.appendChild(bar);
+        m.textContent += '  ' + Math.round(f * 100) + ' %';
+      }
+    }
+    b.addEventListener('click', () => { sidIn.value = s.id; start(); });
+    const on = watchlist.includes(s.id);
+    const st = document.createElement('button');
+    st.type = 'button'; st.className = 'star'; st.textContent = on ? '★' : '☆';
+    st.title = on ? 'Von der Merkliste entfernen' : 'Merken';
+    st.setAttribute('aria-pressed', String(on));
+    st.addEventListener('click', () => toggleWatch(s.id));
+    row.append(b, st);
+    return row;
+  }
+
+  function renderContinue() {
+    const box = $('continue');
+    box.innerHTML = '';
+    const items = lastUnfinished(6);
+    if (!items.length) return;
+    const h = document.createElement('h3'); h.textContent = 'Weiterschauen';
+    const wrap = document.createElement('div'); wrap.className = 'cont-list';
+    items.forEach(([id, p]) => {
+      const s = byId(id);
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'cont';
+      const t = document.createElement('span'); t.className = 't'; t.textContent = s ? s.title : 'Session ' + id;
+      const m = document.createElement('span'); m.className = 'm';
+      m.textContent = fmtTime(p.t) + ' von ' + fmtTime(p.d) + (s && s.room ? ' · ' + s.room : '');
+      const bar = document.createElement('span'); bar.className = 'bar'; bar.style.width = Math.min(100, p.t / p.d * 100).toFixed(1) + '%';
+      b.append(t, m, bar);
+      b.addEventListener('click', () => { sidIn.value = id; start(); });
+      wrap.appendChild(b);
+    });
+    box.append(h, wrap);
+  }
+
+  $('toggleImport').addEventListener('click', () => { const b = $('importBox'); b.hidden = !b.hidden; });
+  $('copySnippet').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(snippet()); $('copySnippet').textContent = 'Kopiert'; }
+    catch (e) { $('copySnippet').textContent = 'Bitte manuell markieren'; }
+    setTimeout(() => $('copySnippet').textContent = 'Befehl kopieren', 2000);
+  });
+  $('doImport').addEventListener('click', async () => {
+    await syncPull();
+    const rawImport = $('importText').value;
+    let posMerged = 0;
+    try {
+      const parsed = JSON.parse(rawImport);
+      if (parsed && parsed.positions && typeof parsed.positions === 'object') {
+        Object.entries(parsed.positions).forEach(([id, p]) => {
+          if (p && typeof p.t === 'number' && (!positions[id] || (p.at || 0) > (positions[id].at || 0))) { positions[id] = p; posMerged++; }
+        });
+        savePositions();
+      }
+    } catch (e) {}
+    const all = extractSessions(rawImport);
+    const wantRooms = roomList();
+    // Keep items whose hall matches; items without hall info are kept only if no filter is set.
+    const items = wantRooms.length ? all.filter(it => matchRoom(it.room)).map(it => Object.assign(it, { room: matchRoom(it.room) })) : all;
+    if (all.length && !items.length) {
+      $('progHint').className = 'hint err';
+      $('progHint').textContent = all.length + ' Sessions erkannt, aber keine in den gewählten Sälen. Saalnamen prüfen oder Filter leeren.';
+      return;
+    }
+    const hint = $('progHint');
+    if (!items.length) {
+      hint.className = 'hint err';
+      hint.textContent = 'Keine Sessions erkannt. Prüfe, ob der Befehl auf der Programmseite lief, oder nimm die JSON-Antwort aus dem Netzwerk-Tab.';
+      return;
+    }
+    let added = 0;
+    items.forEach(it => {
+      const ex = byId(it.id);
+      if (ex) Object.assign(ex, { title: it.title || ex.title, start: it.start || ex.start, text: it.text || ex.text, room: it.room || ex.room, code: it.code || ex.code });
+      else { sessions.push(it); added++; }
+    });
+    sessions.sort((a, b) => (a.start || '').localeCompare(b.start || '') || a.title.localeCompare(b.title, 'de'));
+    store('dgn_sessions', JSON.stringify(sessions));
+    touchProgram();
+    if (posMerged) syncPushPositions(Object.keys(positions));
+    $('importText').value = '';
+    $('importBox').hidden = true;
+    renderResults();
+    hint.className = 'hint ok';
+    hint.textContent = (posMerged ? posMerged + ' Abspielpositionen übernommen, ' : '') + added + ' neue Sessions hinzugefügt' + (all.length > items.length ? ' (' + (all.length - items.length) + ' aus anderen Sälen übersprungen)' : '') + ', insgesamt ' + sessions.length + '.';
+  });
+  $('clearProg').addEventListener('click', () => {
+    if (!confirm('Importiertes Programm (' + sessions.length + ' Sessions) löschen? Token und heruntergeladene Videos bleiben erhalten.')) return;
+    sessions.splice(0, sessions.length); store('dgn_sessions', '[]'); $('search').value = ''; renderResults();
+    touchProgram();
+    $('progHint').className = 'hint ok'; $('progHint').textContent = 'Programm gelöscht.';
+  });
+  $('exportProg').addEventListener('click', async () => {
+    const hint = $('progHint');
+    try {
+      await navigator.clipboard.writeText(JSON.stringify({ sessions, positions }));
+      hint.className = 'hint ok';
+      hint.textContent = 'Liste samt Abspielpositionen kopiert. Auf dem anderen Gerät unter „Programm importieren“ einfügen.';
+    } catch (e) { hint.className = 'hint err'; hint.textContent = 'Kopieren nicht möglich.'; }
+  });
+  $('search').addEventListener('input', renderResults);
+  $('search').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { const first = $('results').querySelector('.item'); if (first) first.click(); }
+  });
+  renderResults();
+
+  video.addEventListener('loadedmetadata', () => {
+    const m = Math.round(video.duration / 60);
+    setStatus(isFinite(m) ? 'Länge ' + m + ' Min.' : '', 'ok');
+    Promise.resolve(sync.busy).then(() => {
+      const p = positions[loadedId];
+      if (p && p.t > 10 && video.duration - p.t > 30) {
+        video.currentTime = p.t;
+        setStatus('Fortgesetzt bei ' + fmtTime(p.t) + ' von ' + fmtTime(video.duration), 'ok');
+        $('restart').hidden = false;
+      }
+      resumeDone = true;
+    });
+  });
+  video.addEventListener('error', () => {
+    if (!video.src) return;
+    setStatus('Video lädt nicht. Token abgelaufen oder Session-ID falsch? Download per curl versuchen.', 'err');
+  });
+  video.addEventListener('ratechange', () => {
+    const i = SPEEDS.indexOf(video.playbackRate);
+    if (i >= 0 && i !== speedIdx) setSpeed(i);
+  });
+
+  video.addEventListener('timeupdate', () => rememberPosition(false));
+  video.addEventListener('pause', () => { rememberPosition(true); renderResults(); });
+  let nextTimer = null;
+  function cancelNext() { if (nextTimer) clearInterval(nextTimer); nextTimer = null; $('cancelNext').hidden = true; }
+  video.addEventListener('ended', () => {
+    rememberPosition(true); renderResults();
+    const cur = loadedId;
+    if (!watchlist.includes(cur)) return;
+    const nxt = nextInWatchlist(cur);
+    if (!nxt) { setStatus('Merkliste durchgeschaut.', 'ok'); return; }
+    const s = byId(nxt), name = s ? s.title : 'Session ' + nxt;
+    let left = 8;
+    const tick = () => {
+      if (left <= 0) { cancelNext(); sidIn.value = nxt; start(); return; }
+      setStatus('Als Nächstes in ' + left + ' s: ' + name, 'ok'); left--;
+    };
+    $('cancelNext').hidden = false;
+    tick(); nextTimer = setInterval(tick, 1000);
+  });
+  $('cancelNext').addEventListener('click', () => { cancelNext(); setStatus('Automatisches Weiterspielen abgebrochen.'); });
+  $('starBtn').addEventListener('click', () => { const id = sidIn.value.trim(); if (id) toggleWatch(id); });
+  $('watchFilter').addEventListener('click', () => {
+    watchFilter = !watchFilter;
+    $('watchFilter').setAttribute('aria-pressed', String(watchFilter));
+    renderResults();
+  });
+  document.addEventListener('visibilitychange', async () => {
+    if (document.hidden) { rememberPosition('hide'); return; }
+    // Back on this device: adopt newer progress made elsewhere for the paused video.
+    const before = positions[loadedId];
+    await syncPull();
+    const id = loadedId, p = positions[id];
+    if (video.src && video.paused && resumeDone && p && p !== before && Math.abs(p.t - video.currentTime) > 2) {
+      video.currentTime = p.t;
+      setStatus('Position vom anderen Gerät übernommen: ' + fmtTime(p.t), 'ok');
+    }
+  });
+  window.addEventListener('pagehide', () => rememberPosition('hide'));
+  $('syncConnect').addEventListener('click', syncConnect);
+  $('ghToken').addEventListener('keydown', e => { if (e.key === 'Enter') syncConnect(); });
+  $('syncNow').addEventListener('click', async () => { syncStatus('Synchronisiere …'); await syncPull(); await syncPushPositions(Object.keys(positions)); });
+  $('syncOff').addEventListener('click', () => {
+    if (!confirm('Sync auf diesem Gerät trennen? Die Daten im Gist bleiben erhalten.')) return;
+    sync.token = ''; sync.gist = ''; store('dgn_gh_token', ''); store('dgn_gist_id', '');
+    renderSyncUI(); syncStatus('Getrennt.');
+  });
+  renderSyncUI();
+  if (connected()) syncPull();
+  $('restart').addEventListener('click', () => {
+    const id = loadedId;
+    if (positions[id]) { positions[id] = { t: 0, d: positions[id].d, at: Date.now(), done: false }; savePositions(); syncPushPositions([id]); }
+    video.currentTime = 0; video.play().catch(() => {});
+    $('restart').hidden = true;
+  });
+  $('load').addEventListener('click', start);
+  speedBtn.addEventListener('click', () => setSpeed(speedIdx + 1));
+  dlBtn.addEventListener('click', download);
+  curlBtn.addEventListener('click', () => copyCurl());
+  $('compress').addEventListener('click', copyCompress);
+  $('slides').addEventListener('click', copySlides);
+  tokenIn.addEventListener('paste', () => setTimeout(parseInput, 0));
+  tokenIn.addEventListener('change', parseInput);
+  [tokenIn, sidIn].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') start(); }));
+
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || !video.src) return;
+    if (e.key === ' ') { e.preventDefault(); video.paused ? video.play() : video.pause(); }
+    else if (e.key === 'ArrowRight') video.currentTime += 10;
+    else if (e.key === 'ArrowLeft') video.currentTime -= 10;
+    else if (e.key === '>') { const s = [...SPEEDS].sort((a, b) => a - b); const n = s.find(v => v > video.playbackRate); if (n) setSpeed(SPEEDS.indexOf(n)); }
+    else if (e.key === '<') { const s = [...SPEEDS].sort((a, b) => b - a); const n = s.find(v => v < video.playbackRate); if (n) setSpeed(SPEEDS.indexOf(n)); }
+  });
+
+  tokenIn.value = load('dgn_token');
+  sidIn.value = load('dgn_sid');
+  checkToken();
+
+  // Terminal commands are useless on iPhone/iPad: hide those controls there.
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (isIOS) {
+    ['download', 'copyCurl', 'preset', 'compress', 'sens', 'slides'].forEach(id => $(id).style.display = 'none');
+    $('hints').style.display = 'none';
+  }
+
+  // Deep link: ...#111252 selects that session (used by the iOS shortcut).
+  async function fromHash() {
+    let id = null;
+    if (/^#weiter$/i.test(location.hash)) {
+      setStatus('Suche letzten Vortrag …');
+      await syncPull();
+      const last = lastUnfinished(1)[0];
+      if (!last) { setStatus('Nichts zum Weiterschauen gefunden.', 'err'); return; }
+      id = last[0];
+    } else {
+      const m = location.hash.match(/^#(\d{4,8})$/);
+      if (!m) return;
+      id = m[1];
+    }
+    sidIn.value = id;
+    if (tokenIn.value.trim()) start();
+    else { setStatus('Bitte einmal den Token eingeben, dann auf Abspielen tippen.', 'err'); tokenIn.focus(); }
+  }
+  window.addEventListener('hashchange', fromHash);
+  fromHash();
+})();
+</script>
+</body>
+</html>
